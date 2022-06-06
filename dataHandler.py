@@ -25,7 +25,7 @@ class ParticleDataset(Dataset):
 
     def __init__(self,path,process_name):
         self.__process_name = process_name
-        self.__files = glob.glob(path+'/*.hdf5')
+        self.__files = glob.glob(path+'/*.hdf5')[:1]
         self.__ranges = [(-1,-1)]
 
         stack = ExitStack()
@@ -90,22 +90,24 @@ class ParticleDataset(Dataset):
         adj_matrix = self.__adj_matrix(
             graph.pmu.eta[graph.final.data],
                 graph.pmu.phi[graph.final.data])
-        knn = gcl.matrix.knn_adj(adj_matrix, k=6)
+        knn = gcl.matrix.knn_adj(adj_matrix, k=5)
         knn = np.maximum(knn, np.transpose(knn))
         edges = np.array(np.where(knn == True))
         edge_index = torch.tensor(edges,dtype=torch.long)
 
-        '''
         finals_hyper = torch.tensor(finals_hyper, dtype=torch.float64)
         all_distances = self.__matrix_distance(finals_hyper)
         sorting = torch.argsort(all_distances, axis=-1)
         random_sampling = torch.randint(0, len(X)-2, (2,len(X)))
-        y = torch.zeros(len(X), 3, dtype=torch.float64)
+        y = torch.zeros(len(X), 3, dtype=torch.int64)
         
         y[:,0] = sorting[:,1]
-        #y[:,1:] = sorting[:,2:][random_sampling]
-        ''' 
-        y = torch.tensor(finals_hyper,dtype=torch.float64)
+        y[:,1] = torch.gather(
+            sorting[:,1:], 1, random_sampling[0].view(-1,1))[:,0]
+        y[:,2] = torch.gather(
+            sorting[:,1:], 1, random_sampling[1].view(-1,1))[:,0]
+
+        #y = torch.tensor(finals_hyper,dtype=torch.float64)
 
         data = Data(x=X, edge_index=edge_index, y=y)
         return data

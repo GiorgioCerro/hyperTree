@@ -1,5 +1,6 @@
 import torch.optim
 from manifold.poincare import PoincareBall
+from manifold import ManifoldParameter
 from .mixin import OptimMixin
 
 _default_manifold = PoincareBall()
@@ -118,6 +119,6 @@ class RiemannianAdam(OptimMixin, torch.optim.Adam):
             manifold = _default_manifold
             exp_avg = state['exp_avg']
             ####### need to correct this as I don't know what projtan is
-            p.copy_(manifold.proj(p))
+            p.copy_(manifold.proj(p), 0.9)
             exp_avg.copy_(manifold.proj_tan(p, exp_avg))
 

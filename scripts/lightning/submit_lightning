@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --nodes=3
+#SBATCH --nodes=4
 #SBATCH --tasks-per-node=40
-#SBATCH --time=01:00:00
+#SBATCH --time=2:30:00
 
 # mail alert at start, end and abortion of execution
 #SBATCH --mail-type=ALL
@@ -11,4 +11,4 @@
 #SBATCH --mail-user=g.cerro@soton.ac.uk
 
 source activate pyg
-python run_lightning.py
+python run2.py

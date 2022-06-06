@@ -3,8 +3,10 @@ from pytorch_lightning.callbacks import TQDMProgressBar
 import torch.nn.functional as F
 import torch
 
-from optimizer.radam import RiemannianAdam
+#from optimizer.radam import RiemannianAdam
+from geoopt.optim.radam import RiemannianAdam
 from manifold.poincare import PoincareBall
+#from geoopt.manifolds import PoincareBall
 manifold = PoincareBall()
 
 
@@ -21,23 +23,21 @@ def distance_matrix(nodes):
 class LitHGCN(pl.LightningModule):
     def __init__(self, model, lr):
         super().__init__()
-        self.hyp_gcn = model(manifold, 4, 32, 2).double()
+        self.hyp_gcn = model(manifold, 4, 10, 2).double()
         self.lr = lr
         #self.hyp_gcn = model(manifold, 4, 2).double()
 
     def training_step(self, batch, batch_idx):
         output = self.hyp_gcn(batch)
 
-        loss_temp=0
-        for graph_idx in torch.unique(batch.batch):
-            graph_mask = batch.batch == graph_idx
+        counts = torch.unique(batch.batch, return_counts=True)[1]
+        sums = [0]
+        for c in counts: sums.append(c + sums[-1])
+        for j in range(len(sums) - 1):
+            batch.y[sums[j] : sums[j+1]] += sums[j]
 
-            _input = distance_matrix(output[graph_mask])
-            _target = distance_matrix(batch.y[graph_mask])
-
-            loss_temp += F.mse_loss(_input,_target)
-
-        loss_temp /= batch.num_graphs
+        loss_temp = self.loss_function(output, batch.y)
+        
         self.log('training loss', loss_temp, 
             prog_bar=True, batch_size=batch.num_graphs)
 
@@ -50,38 +50,34 @@ class LitHGCN(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         output = self.hyp_gcn(batch)
 
-        loss_temp=0
-        for graph_idx in torch.unique(batch.batch):
-            graph_mask = batch.batch == graph_idx
+        counts = torch.unique(batch.batch, return_counts=True)[1]
+        sums = [0]
+        for c in counts: sums.append(c + sums[-1])
+        for j in range(len(sums) - 1):
+            batch.y[sums[j] : sums[j+1]] += sums[j]
 
-            _input = distance_matrix(output[graph_mask])
-            _target = distance_matrix(batch.y[graph_mask])
-            
-            loss_temp += F.mse_loss(_input,_target)
-
-        loss_temp /= batch.num_graphs
+        loss_temp = self.loss_function(output, batch.y)
+                
         self.log('validation loss', loss_temp, batch_size=batch.num_graphs)
 
 
     def test_step(self, batch, batch_idx):
         output = self.hyp_gcn(batch)
 
-        loss_tepm=0
-        for graph_idx in torch.unique(batch.batch):
-            graph_mask = batch.batch == graph_idx
+        counts = torch.unique(batch.batch, return_counts=True)[1]
+        sums = [0]
+        for c in counts: sums.append(c + sums[-1])
+        for j in range(len(sums) - 1):
+            batch.y[sums[j] : sums[j+1]] += sums[j]
 
-            _input = distance_matrix(output[graph_mask])
-            _target = distance_matrix(batch.y[graph_mask])
-            
-            loss_temp += F.mse_loss(_input,_target)
-
-        loss_temp /= batch.num_graphs
+        loss_temp = self.loss_function(output, batch.y)
+                
         self.log('test loss', loss_temp, batch_size=batch.num_graphs)
 
 
     def configure_optimizers(self):
         optimizer = RiemannianAdam(self.hyp_gcn.parameters(),
-            lr=self.lr, weight_decay=5e-4)
+            lr=self.lr, weight_decay=5e-4, stabilize=1)
         return optimizer
 
 
@@ -89,6 +85,23 @@ class LitHGCN(pl.LightningModule):
         avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
         self.logger.experiment.add_scalar('loss/epoch', avg_loss,
             self.current_epoch)
+
+
+    def log_sigmoid(self, vector):
+        return torch.log(( 1 / (1 + torch.exp(-vector))))
+    
+
+    def loss_function(self, output, neighs):
+        pos_neigh, neg_neigh = neighs[:,0], neighs[:,1:]
+        pos_dist = manifold.distance(output, output[neighs[:,0]])**2
+        neg_dist1= manifold.distance(output, output[neighs[:,1]])**2
+        neg_dist2 = manifold.distance(output, output[neighs[:,2]])**2
+       
+        pos_loss = self.log_sigmoid(- pos_dist)
+        neg_loss = self.log_sigmoid(neg_dist1) + self.log_sigmoid(neg_dist2)
+
+        loss = - torch.mean(pos_loss + neg_loss)
+        return loss
 
 
 class LitProgressBar(TQDMProgressBar):

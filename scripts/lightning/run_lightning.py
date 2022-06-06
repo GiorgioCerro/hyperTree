@@ -24,14 +24,14 @@ valid_set_size = len(train) - train_set_size
 seed = torch.Generator().manual_seed(42)
 train_set, valid_set = torch.utils.data.random_split(
     train, [train_set_size, valid_set_size], generator=seed)
-train_set = DataLoader(train_set, batch_size=8, num_workers=40)
-valid_set = DataLoader(valid_set, batch_size=8, num_workers=40)
+train_set = DataLoader(train_set, batch_size=2, num_workers=40,drop_last=True)
+valid_set = DataLoader(valid_set, batch_size=2, num_workers=40,drop_last=True)
 
 test = ParticleDataset('../data/hz_test.hdf5','signal')
 test = DataLoader(test, batch_size=4, num_workers=1)
 
 
-hyper_gcn = LitHGCN(HyperGCN, 1e-4)
+hyper_gcn = LitHGCN(HyperGCN, 0.05)
 bar = LitProgressBar()
 profiler = AdvancedProfiler(dirpath='.', filename='perf_logs')
 logger = TensorBoardLogger('tb_logs', name='my_model')
@@ -41,10 +41,10 @@ trainer = pl.Trainer(
         #profiler=profiler,
         #gpus=2,
         #strategy='ddp',#[DDPPlugin()],
-        #accelerator='cpu',
-        #devices=2,
-        #num_nodes=2,
-        max_epochs=5,
+        accelerator='cpu',
+        #devices=4,
+        #num_nodes=4,
+        max_epochs=20,
         log_every_n_steps=2,
         callbacks=[bar],
         auto_lr_find=False)
@@ -53,6 +53,6 @@ trainer = pl.Trainer(
 #hyper_gcn.hparams.lr = lr_finder.suggestion()
 #print(f'this is the best lr: {hyper_gcn.hparams.lr}')
 trainer.fit(hyper_gcn, train_set, valid_set)
-trainer.save_checkpoint('m_local_agg_6knn.ckpt')
+trainer.save_checkpoint('m_test2.ckpt')
 
 #trainer.test(model=hgnn,dataloaders=test,ckpt_path='model.ckpt')
